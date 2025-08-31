@@ -140,7 +140,6 @@ async def back_from_qty(call: CallbackQuery, state: FSMContext):
     await call.answer()
 
 
-@router.callback_query(PurchaseState.choosing_price, F.data == "back")
 @router.callback_query(PurchaseState.waiting_payment_confirm, F.data == "back")
 async def back_from_requisites(call: CallbackQuery, state: FSMContext):
     data = await state.get_data()
@@ -193,7 +192,6 @@ async def choose_price(call: CallbackQuery, state: FSMContext):
     await call.answer()
 
 
-@router.callback_query(PurchaseState.waiting_payment_confirm, F.data == "back")
 @router.callback_query(PurchaseState.waiting_promo_code, F.data == "back")
 async def back_from_promo(call: CallbackQuery, state: FSMContext):
     await call.message.edit_text(get_messages()["choosing_price"], reply_markup=await kb_choosing_price())
