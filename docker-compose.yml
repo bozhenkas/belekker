@@ -26,7 +26,7 @@ services:
     environment:
       DB_HOST: postgres
     volumes:
-      - ./src:/app/src
+      - ./src:/app/srcашт
       - ./assets:/app/assets
       - ./cache:/app/cache
       - ./.env:/app/.env
