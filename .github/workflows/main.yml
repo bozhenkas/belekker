@@ -21,7 +21,7 @@ jobs:
           key: ${{ secrets.PRIVATE_KEY }} # Приватный ключ для SSH, берется из секретов Github
           port: 17904 # Порт для SSH-подключения (по умолчанию 22)
           script: |
-            cd /root/belekker
+            cd belekker
             git reset --hard
             git pull origin main
             docker-compose down
