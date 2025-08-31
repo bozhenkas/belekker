@@ -17,12 +17,16 @@ jobs:
         uses: appleboy/ssh-action@v0.1.9
         with:
           host: ${{ secrets.HOST }}
-          username: ${{ secrets.USERNAME }} # Имя пользователя для SSH, берется из секретов Github
-          key: ${{ secrets.PRIVATE_KEY }} # Приватный ключ для SSH, берется из секретов Github
-          port: 17904 # Порт для SSH-подключения (по умолчанию 22)
+          username: ${{ secrets.USERNAME }}
+          key: ${{ secrets.PRIVATE_KEY }}
+          port: 17904
           script: |
             cd ~/belekker
-            git pull origin main
+            # Обновляем локальную ветку, разрешая fast-forward только
+            git fetch origin main
+            git reset --hard origin/main
+            # Проверим статус
             git status
+            # Перезапуск Docker
             docker-compose down
             docker-compose up --build -d
