@@ -3,15 +3,15 @@ __pycache__/
 *.pyc
 *.pyo
 
-# virual environment
+# Virtual environment
 .venv/
 env/
 venv/
 
-# .env
+# Secrets
 .env
 
-# logs, temp, cache
+# Logs, temp, cache
 cache/
 *.log
 *.csv
@@ -20,8 +20,11 @@ cache/
 # Сгенерированные билеты
 src/bot/tickets/tickets/*
 
-# Системные файлы macOS
-.DS_Store
+# Temporary scripts
+temp.py
 
-# IDEA project files (если используешь PyCharm)
+# IDE files
 .idea/
+
+# macOS system files
+.DS_Store
