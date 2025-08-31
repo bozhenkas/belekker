@@ -4,7 +4,7 @@ services:
     environment:
       POSTGRES_DB: tickets_db
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: nbD23ksa_7xzO4ap
+      POSTGRES_PASSWORD: ${DB_PASS}
     ports:
       - "5432:5432"
     volumes:
