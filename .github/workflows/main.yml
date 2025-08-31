@@ -1,0 +1,28 @@
+name: python CD
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  deploy:
+    name: Deploy to Server
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v0.1.9
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USERNAME }} # Имя пользователя для SSH, берется из секретов Github
+          key: ${{ secrets.PRIVATE_KEY }} # Приватный ключ для SSH, берется из секретов Github
+          port: 17904 # Порт для SSH-подключения (по умолчанию 22)
+          script: |
+            cd /root/belekker
+            git reset --hard
+            git pull origin main
+            docker-compose down
+            docker-compose up -d --build
