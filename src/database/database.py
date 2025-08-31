@@ -1,0 +1,390 @@
+import asyncpg
+import csv
+import os
+import time
+import uuid
+from datetime import datetime
+from .config import DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD
+
+
+class Database:
+    def __init__(self):
+        self.pool = None
+
+    async def connect(self):
+        """
+        Создает пул подключений к базе данных.
+        Предполагается, что структура БД (таблицы, триггеры) уже создана
+        с помощью отдельного скрипта инициализации.
+        """
+        if not self.pool:
+            self.pool = await asyncpg.create_pool(
+                host=DB_HOST,
+                port=DB_PORT,
+                database=DB_NAME,
+                user=DB_USER,
+                password=DB_PASSWORD,
+                min_size=1,
+                max_size=10,
+                max_inactive_connection_lifetime=30,
+                max_queries=50000
+            )
+            print("Пул подключений к базе данных успешно создан.")
+
+    async def close(self):
+        """Закрывает пул подключений."""
+        if self.pool:
+            await self.pool.close()
+            print("Пул подключений закрыт.")
+
+    # --- Методы для работы с пользователями ---
+
+    async def add_user(self, telegram_id: int, username: str) -> bool:
+        """
+        Добавляет нового пользователя в базу данных.
+        Возвращает True, если пользователь был добавлен, и False, если он уже существует.
+        """
+        async with self.pool.acquire() as conn:
+            # Проверяем, существует ли пользователь
+            exists = await conn.fetchval(
+                "SELECT 1 FROM users WHERE telegram_id = $1", telegram_id
+            )
+            if exists:
+                return False  # Пользователь уже в базе
+
+            # Добавляем нового пользователя
+            await conn.execute(
+                "INSERT INTO users (telegram_id, username) VALUES ($1, $2)",
+                telegram_id, username
+            )
+            return True
+
+    async def get_user_by_telegram_id(self, telegram_id: int):
+        """Возвращает данные пользователя по его telegram_id."""
+        async with self.pool.acquire() as conn:
+            return await conn.fetchrow(
+                "SELECT * FROM users WHERE telegram_id = $1", telegram_id
+            )
+
+    async def count_users(self) -> int:
+        """Возвращает общее количество пользователей."""
+        async with self.pool.acquire() as conn:
+            return await conn.fetchval("SELECT COUNT(*) FROM users")
+
+    # --- Методы для работы с транзакциями (покупками) ---
+
+    async def create_transaction(self, user_telegram_id: int, quantity: int, amount: float,
+                                 promo_code: str | None = None) -> int:
+        """
+        Создает новую транзакцию со статусом 'on_check'.
+        Если указан промокод, он будет применен.
+        Возвращает ID созданной транзакции.
+        """
+        async with self.pool.acquire() as conn:
+            async with conn.transaction():
+                promo_code_id = None
+                if promo_code:
+                    # Находим ID промокода. Триггер в БД проверит, не использован ли он.
+                    promo_code_id = await conn.fetchval(
+                        "SELECT id FROM promo_codes WHERE code = $1 AND is_used = FALSE", promo_code
+                    )
+                    if not promo_code_id:
+                        raise ValueError("Промокод не найден или уже использован.")
+
+                # Вставляем транзакцию. Триггер сам обновит is_used у промокода.
+                transaction_id = await conn.fetchval(
+                    """
+                    INSERT INTO transactions (user_telegram_id, quantity, amount, promo_code_id, status)
+                    VALUES ($1, $2, $3, $4, 'on_check')
+                    RETURNING id
+                    """,
+                    user_telegram_id, quantity, amount, promo_code_id
+                )
+                return transaction_id
+
+    async def add_purchase(self, telegram_id: int, qty: int, amount: int, repost: bool,
+                           moderator_id: int | None = None):
+        """
+        Совместимый со старой версией метод для добавления покупки.
+        Создает транзакцию со статусом 'on_check'.
+        Параметры `repost` и `moderator_id` игнорируются.
+        """
+        # Просто вызываем новый, более точный метод. Промокод здесь не передается.
+        await self.create_transaction(user_telegram_id=telegram_id, quantity=qty, amount=float(amount))
+
+    async def get_transaction(self, transaction_id: int):
+        """
+        Получает информацию о транзакции по ее ID.
+        Возвращает: запись (record) или None, если не найдена.
+        """
+        async with self.pool.acquire() as conn:
+            query = """
+                SELECT user_telegram_id, status FROM transactions WHERE id = $1;
+            """
+            return await conn.fetchrow(query, transaction_id)
+
+    async def approve_transaction(self, transaction_id: int) -> list[str]:
+        """
+        Подтверждает транзакцию и создает билеты для пользователя.
+        Меняет статус транзакции на 'approved'.
+        Возвращает список сгенерированных токенов билетов.
+        """
+        async with self.pool.acquire() as conn:
+            async with conn.transaction():
+                # Получаем данные транзакции
+                tx_data = await conn.fetchrow(
+                    "SELECT user_telegram_id, quantity, status FROM transactions WHERE id = $1",
+                    transaction_id
+                )
+                if not tx_data:
+                    raise ValueError("Транзакция не найдена.")
+                if tx_data['status'] != 'on_check':
+                    raise ValueError(f"Транзакция уже обработана (статус: {tx_data['status']}).")
+
+                # Обновляем статус транзакции
+                await conn.execute(
+                    "UPDATE transactions SET status = 'approved' WHERE id = $1",
+                    transaction_id
+                )
+
+                # генерируем и вставляем билеты
+                owner_id = tx_data['user_telegram_id']
+                quantity = tx_data['quantity']
+                new_tickets = []
+                for _ in range(quantity):
+                    token = token = f"{owner_id:x}aa{int(time.time()):x}{uuid.uuid4().hex[:6]}"
+                    await conn.execute(
+                        """
+                        INSERT INTO tickets (token, owner_telegram_id, transaction_id, status)
+                        VALUES ($1, $2, $3, 'active')
+                        """,
+                        token, owner_id, transaction_id
+                    )
+                    new_tickets.append(token)
+
+                return new_tickets
+
+    async def reject_transaction(self, transaction_id: int):
+        """Отклоняет транзакцию, меняя ее статус на 'rejected'."""
+        async with self.pool.acquire() as conn:
+            result = await conn.execute(
+                "UPDATE transactions SET status = 'rejected' WHERE id = $1 AND status = 'on_check'",
+                transaction_id
+            )
+            if result == 'UPDATE 0':
+                raise ValueError("Транзакция не найдена или уже обработана.")
+
+    # --- Методы для работы с билетами ---
+
+    async def get_user_tickets(self, telegram_id: int) -> int:
+        """
+        Возвращает количество АКТИВНЫХ билетов у пользователя.
+        Сохранено старое название для совместимости.
+        """
+        async with self.pool.acquire() as conn:
+            count = await conn.fetchval(
+                "SELECT COUNT(*) FROM tickets WHERE owner_telegram_id = $1 AND status = 'active'",
+                telegram_id
+            )
+            return count if count is not None else 0
+
+    async def get_user_ticket_list(self, telegram_id: int) -> list:
+        """Возвращает список всех активных билетов (токенов) пользователя."""
+        async with self.pool.acquire() as conn:
+            records = await conn.fetch(
+                "SELECT token FROM tickets WHERE owner_telegram_id = $1 AND status = 'active'",
+                telegram_id
+            )
+            return [record['token'] for record in records]
+
+    async def use_ticket(self, token: str) -> bool:
+        """
+        Помечает билет как 'used'.
+        Возвращает True в случае успеха, False если билет не найден или уже использован.
+        """
+        async with self.pool.acquire() as conn:
+            result = await conn.execute(
+                "UPDATE tickets SET status = 'used' WHERE token = $1 AND status = 'active'",
+                token
+            )
+            return result == 'UPDATE 1'
+
+    async def remove_tickets(self, telegram_id: int, count: int):
+        """
+        Помечает указанное количество билетов пользователя как 'used'.
+        Сохранено старое название для совместимости.
+        Билеты выбираются по принципу FIFO (самые старые).
+        """
+        async with self.pool.acquire() as conn:
+            async with conn.transaction():
+                # Находим самые старые активные билеты пользователя для списания
+                tickets_to_use = await conn.fetch(
+                    """
+                    SELECT id FROM tickets
+                    WHERE owner_telegram_id = $1 AND status = 'active'
+                    ORDER BY created_at ASC
+                    LIMIT $2
+                    """,
+                    telegram_id, count
+                )
+
+                if len(tickets_to_use) < count:
+                    print(f"Внимание: у пользователя {telegram_id} недостаточно билетов для списания.")
+
+                if not tickets_to_use:
+                    return
+
+                ticket_ids = [record['id'] for record in tickets_to_use]
+                await conn.execute(
+                    "UPDATE tickets SET status = 'used' WHERE id = ANY($1::int[])",
+                    ticket_ids
+                )
+
+    async def count_tickets(self) -> int:
+        """
+        Возвращает общее количество АКТИВНЫХ билетов в системе.
+        Сохранено старое название для совместимости.
+        """
+        async with self.pool.acquire() as conn:
+            count = await conn.fetchval("SELECT COUNT(*) FROM tickets WHERE status = 'active'")
+            return count if count is not None else 0
+
+    # --- Методы для работы с промокодами ---
+
+    async def create_promo_code(self, code: str, admin_telegram_id: int) -> bool:
+        """Создает новый промокод."""
+        async with self.pool.acquire() as conn:
+            try:
+                await conn.execute(
+                    "INSERT INTO promo_codes (code, admin_telegram_id) VALUES ($1, $2)",
+                    code, admin_telegram_id
+                )
+                return True
+            except asyncpg.UniqueViolationError:
+                return False  # Такой код уже существует
+
+    async def get_promo_code(self, code: str):
+        """Возвращает данные о промокоде."""
+        async with self.pool.acquire() as conn:
+            return await conn.fetchrow("SELECT * FROM promo_codes WHERE code = $1", code)
+
+    # --- Вспомогательные методы ---
+
+    async def get_total_sales_amount(self) -> float:
+        """
+        Возвращает общую сумму продаж по подтвержденным транзакциям.
+        """
+        async with self.pool.acquire() as conn:
+            amount = await conn.fetchval(
+                "SELECT SUM(amount) FROM transactions WHERE status = 'approved'"
+            )
+            return amount if amount is not None else 0.0
+
+    async def export_transactions_csv(self) -> str:
+        """
+        Экспортирует данные по всем транзакциям в CSV-файл.
+        """
+        filename = f"stats_exports/transactions_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+
+        async with self.pool.acquire() as conn:
+            records = await conn.fetch("""
+                SELECT
+                    id,
+                    user_telegram_id,
+                    quantity,
+                    amount,
+                    status,
+                    created_at
+                FROM transactions
+                ORDER BY created_at DESC;
+            """)
+
+        headers = ["id", "user_telegram_id", "quantity", "amount", "status", "created_at"]
+
+        with open(filename, "w", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=headers)
+            writer.writeheader()
+            for row in records:
+                writer.writerow({
+                    "id": row['id'],
+                    "user_telegram_id": row['user_telegram_id'],
+                    "quantity": row['quantity'],
+                    "amount": row['amount'],
+                    "status": row['status'],
+                    "created_at": row['created_at'].isoformat() if row['created_at'] else ''
+                })
+
+        return filename
+
+    async def export_tickets_csv(self) -> str:
+        """
+        Экспортирует данные по всем билетам в CSV-файл.
+        """
+        filename = f"stats_exports/tickets_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+
+        async with self.pool.acquire() as conn:
+            records = await conn.fetch("""
+                SELECT
+                    id,
+                    token,
+                    owner_telegram_id,
+                    transaction_id,
+                    status,
+                    created_at
+                FROM tickets
+                ORDER BY created_at DESC;
+            """)
+
+        headers = ["id", "token", "owner_telegram_id", "transaction_id", "status", "created_at"]
+
+        with open(filename, "w", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=headers)
+            writer.writeheader()
+            for row in records:
+                writer.writerow({
+                    "id": row['id'],
+                    "token": row['token'],
+                    "owner_telegram_id": row['owner_telegram_id'],
+                    "transaction_id": row['transaction_id'],
+                    "status": row['status'],
+                    "created_at": row['created_at'].isoformat() if row['created_at'] else ''
+                })
+
+        return filename
+
+    async def export_csv(self) -> str:
+        """
+        Экспортирует данные пользователей и количество их активных билетов в CSV файл.
+        """
+        filename = f"cache/users_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+        os.makedirs("cache", exist_ok=True)
+
+        async with self.pool.acquire() as conn:
+            # Используем LEFT JOIN, чтобы включить пользователей даже без билетов
+            data = await conn.fetch("""
+                SELECT
+                    u.id,
+                    u.telegram_id,
+                    u.username,
+                    u.created_at,
+                    COUNT(t.id) FILTER (WHERE t.status = 'active') AS active_tickets_count
+                FROM users u
+                LEFT JOIN tickets t ON u.telegram_id = t.owner_telegram_id
+                GROUP BY u.id
+                ORDER BY u.id;
+            """)
+
+        headers = ["id", "telegram_id", "username", "registration_date", "active_tickets_count"]
+
+        with open(filename, "w", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f)
+            for row in data:
+                writer.writerow([
+                    row['id'],
+                    row['telegram_id'],
+                    row['username'],
+                    row['created_at'].strftime('%Y-%m-%d %H:%M:%S'),
+                    row['active_tickets_count']
+                ])
+
+        return filename

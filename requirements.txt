@@ -1,0 +1,12 @@
+aiogram==3.13.1
+asyncpg~=0.30.0
+python-dotenv==1.0.1
+PyYAML==6.0.2
+pytest==8.3.2
+
+dotenv~=0.9.9
+
+psycopg2~=2.9.10
+qrcode~=8.2
+pillow~=11.3.0
+pydantic~=2.9.2
