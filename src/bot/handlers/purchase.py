@@ -167,7 +167,6 @@ async def ask_proof(call: CallbackQuery, state: FSMContext):
     await call.answer()
 
 
-@router.callback_query(PurchaseState.choosing_price, F.data == "back")
 @router.callback_query(PurchaseState.choosing_price, F.data.startswith("repost:"))
 async def choose_price(call: CallbackQuery, state: FSMContext):
     repost_val = call.data.split(":")[1]
@@ -194,6 +193,7 @@ async def choose_price(call: CallbackQuery, state: FSMContext):
     await call.answer()
 
 
+@router.callback_query(PurchaseState.waiting_payment_confirm, F.data == "back")
 @router.callback_query(PurchaseState.waiting_promo_code, F.data == "back")
 async def back_from_promo(call: CallbackQuery, state: FSMContext):
     await call.message.edit_text(get_messages()["choosing_price"], reply_markup=await kb_choosing_price())

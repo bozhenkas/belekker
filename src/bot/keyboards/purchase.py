@@ -24,7 +24,7 @@ async def kb_choosing_price() -> types.InlineKeyboardMarkup:
 async def kb_quantity() -> types.InlineKeyboardMarkup:
     # выбор количества
     k = [[types.InlineKeyboardButton(text=str(n), callback_data=f'qty:{n}')] for n in [2, 3, 4]]
-    k.append([types.InlineKeyboardButton(text='назад ↩️', callback_data='back')])
+    k.append([types.InlineKeyboardButton(text='⤝ назад', callback_data='back')])
     return types.InlineKeyboardMarkup(inline_keyboard=k)
 
 
