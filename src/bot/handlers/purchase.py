@@ -200,6 +200,14 @@ async def back_from_promo(call: CallbackQuery, state: FSMContext):
     await call.answer()
 
 
+@router.callback_query(F.data == "back")
+async def back(call: CallbackQuery, state: FSMContext):
+    # назад к выбору купить 1/больше (инлайн)
+    await state.clear()
+    await call.message.edit_text(get_messages()["choose_quantity"], reply_markup=await kb_buy_choice())
+    await call.answer()
+
+
 @router.message(PurchaseState.waiting_promo_code, F.text)
 async def check_promo_code(message: Message, state: FSMContext, db: Database):
     promo_code = message.text.strip()
