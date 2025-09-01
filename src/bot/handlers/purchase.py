@@ -132,6 +132,7 @@ async def choose_qty(call: CallbackQuery, state: FSMContext):
     await call.answer()
 
 
+ @router.callback_query(PurchaseState.choosing_price, F.data == "back")
 @router.callback_query(PurchaseState.choosing_quantity, F.data == "back")
 async def back_from_qty(call: CallbackQuery, state: FSMContext):
     # назад к выбору купить 1/больше (инлайн)
