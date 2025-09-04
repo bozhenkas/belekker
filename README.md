@@ -9,7 +9,7 @@ generation. The project is containerized using Docker for easy deployment.
 ### 1. Clone the Repository
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/bozhenkas/belekker.git
 cd belekker
 ```
 
