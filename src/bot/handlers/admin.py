@@ -61,7 +61,7 @@ async def promo_command(message: Message, db: Database):
     promo_code = await _generate_promo(db, message.from_user.id, value=value)
 
     if promo_code:
-        await msg.edit_text(msgs["promo_created"].format(promo_code, value))
+        await msg.edit_text(msgs["promo"].format(promo_code, value))
     else:
         await msg.edit_text(msgs["promo_failed"])
 
