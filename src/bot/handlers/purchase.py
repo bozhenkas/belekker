@@ -234,7 +234,7 @@ async def check_promo_code(message: Message, state: FSMContext, db: Database):
     promo_code = message.text.strip()
     promo_data = await db.get_promo_code(promo_code)
 
-    if not promo_data or promo_data['is_used']:
+    if not promo_data or promo_data['used_count'] >= promo_data['usage_limit']:
         await message.answer(get_messages()["promo_code_invalid"])
         return
 

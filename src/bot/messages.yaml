@@ -41,7 +41,7 @@ ask_promo_code: |
   <blockquote>если вы не получили промокод, напишите @bozhenkas</blockquote>
 
 promo_code_invalid: |
-  <span class="tg-spoiler">промокод неверный, попробуйте ещё раз</span>
+  <span class="tg-spoiler">промокод уже был использован или не существует, попробуйте ещё раз</span>
 
 payment_requisites: |
   сумма к оплате: <b>{} руб</b>
