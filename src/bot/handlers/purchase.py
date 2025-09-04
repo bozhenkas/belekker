@@ -28,10 +28,18 @@ _album_meta: dict = {}
 _album_tasks: dict = {}
 
 
-async def forward_to_group_and_log(message: Message, qty: int, files: list, ts: int, data: dict, repost: bool,
-                                   transaction_id: int):
-    # логируем метаданные один раз (для альбома список файлов через |)
+async def forward_to_group_and_log(
+        message: Message,
+        qty: int,
+        files: list,
+        ts: int,
+        data: dict,
+        repost: bool,
+        transaction_id: int,
+        db: Database,  # теперь сюда передаем db
+):
     try:
+        # логируем метаданные (для альбома — список файлов через |)
         meta = {
             "user_id": message.from_user.id,
             "username": message.from_user.username,
@@ -46,10 +54,11 @@ async def forward_to_group_and_log(message: Message, qty: int, files: list, ts: 
         # csv
         write_header = not os.path.exists("cache/payments_log.csv")
         with open("cache/payments_log.csv", "a", newline="", encoding="utf-8") as cf:
-            w = csv.DictWriter(cf,
-                               fieldnames=["user_id", "username", "qty", "timestamp", "file"],
-                               extrasaction="ignore",
-                               )
+            w = csv.DictWriter(
+                cf,
+                fieldnames=["user_id", "username", "qty", "timestamp", "file"],
+                extrasaction="ignore",
+            )
             if write_header:
                 w.writeheader()
             w.writerow(meta)
@@ -60,16 +69,29 @@ async def forward_to_group_and_log(message: Message, qty: int, files: list, ts: 
     if not group_chat_id:
         return
 
-    # общий текст подписи из messages.yaml с суммой
+    # все тексты берем из messages.yaml
     msgs = get_messages()
+
     uname = (
         ("@" + message.from_user.username)
         if message.from_user.username
-        else (message.from_user.full_name or "пользователь")
+        else (message.from_user.full_name or msgs["default_username"])
     )
-    per_ticket = 750 if repost else 900
-    total_amount = per_ticket * qty
+
+    # сумма: если есть промокод в state → берем value из БД
+    promo_code = data.get("promo_code")
+    if promo_code:
+        promo_value = await db.get_promo_value(promo_code)
+        if promo_value is None:
+            promo_value = 750  # fallback на всякий случай
+        total_amount = promo_value * qty
+    else:
+        per_ticket = 750 if repost else 900
+        total_amount = per_ticket * qty
+
     repost_label = msgs["repost_true_label"] if repost else msgs["repost_false_label"]
+
+    # сообщение модераторам
     caption_text = msgs["moderation_caption"].format(uname, qty, repost_label, total_amount)
 
     kb = await admin_buttons(transaction_id)
@@ -83,7 +105,7 @@ async def forward_to_group_and_log(message: Message, qty: int, files: list, ts: 
             logging.exception("Ошибка при отправке альбома")
             return
 
-        # сразу следом отправляем одно инфо-сообщение с подписью и кнопками
+        # следом — инфо-сообщение с подписью и кнопками
         try:
             await message.bot.send_message(
                 chat_id=group_chat_id,
@@ -174,16 +196,15 @@ async def choose_price(call: CallbackQuery, state: FSMContext):
     await state.update_data(repost=repost)
     sd = await state.get_data()
     qty = int(sd.get("qty", 1))
-    per_ticket = 750 if repost else 900
+
+    per_ticket = 900 if not repost else 0  # если репост, цену подтянем позже
     total_amount = per_ticket * qty
     await state.update_data(amount=total_amount)
 
     if repost:
-        # Если "с репостом", запрашиваем промокод
         await call.message.edit_text(get_messages()["ask_promo_code"], reply_markup=await kb_promo_code())
         await state.set_state(PurchaseState.waiting_promo_code)
     else:
-        # Если "без репоста", сразу показываем реквизиты
         await call.message.edit_text(
             get_messages()["payment_requisites"].format(total_amount),
             reply_markup=await kb_confirm_paid(),
@@ -214,14 +235,22 @@ async def check_promo_code(message: Message, state: FSMContext, db: Database):
     promo_data = await db.get_promo_code(promo_code)
 
     if not promo_data or promo_data['is_used']:
-        # Промокод не найден или уже использован
         await message.answer(get_messages()["promo_code_invalid"])
         return
 
-    # Промокод найден и валиден
-    await state.update_data(promo_code=promo_code)
+    # Получаем value для этого промокода
+    promo_value = await db.get_promo_value(promo_code)
+    if promo_value is None:
+        await message.answer(get_messages()["promo_code_invalid"])
+        return
+
     sd = await state.get_data()
-    total_amount = sd.get("amount")
+    qty = int(sd.get("qty", 1))
+    total_amount = promo_value * qty
+
+    # Сохраняем промо и сумму
+    await state.update_data(promo_code=promo_code, amount=total_amount)
+
     await message.answer(
         get_messages()["payment_requisites"].format(total_amount),
         reply_markup=await kb_confirm_paid(),

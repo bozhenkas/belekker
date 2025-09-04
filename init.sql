@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS promo_codes (
     id SERIAL PRIMARY KEY,
     code VARCHAR(50) UNIQUE NOT NULL,
     admin_telegram_id BIGINT REFERENCES users(telegram_id) ON DELETE SET NULL,
+    value NUMERIC(10,2) NOT NULL DEFAULT 750, -- номинал билета/цена со скидкой
     is_used BOOLEAN NOT NULL DEFAULT FALSE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );

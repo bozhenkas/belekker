@@ -251,13 +251,13 @@ class Database:
 
     # --- Методы для работы с промокодами ---
 
-    async def create_promo_code(self, code: str, admin_telegram_id: int) -> bool:
-        """Создает новый промокод."""
+    async def create_promo_code(self, code: str, admin_telegram_id: int, value: float = 750) -> bool:
+        """Создает новый промокод с номиналом (цена билета со скидкой)."""
         async with self.pool.acquire() as conn:
             try:
                 await conn.execute(
-                    "INSERT INTO promo_codes (code, admin_telegram_id) VALUES ($1, $2)",
-                    code, admin_telegram_id
+                    "INSERT INTO promo_codes (code, admin_telegram_id, value) VALUES ($1, $2, $3)",
+                    code, admin_telegram_id, value
                 )
                 return True
             except asyncpg.UniqueViolationError:
@@ -267,6 +267,12 @@ class Database:
         """Возвращает данные о промокоде."""
         async with self.pool.acquire() as conn:
             return await conn.fetchrow("SELECT * FROM promo_codes WHERE code = $1", code)
+
+    async def get_promo_value(self, code: str) -> float | None:
+        """Возвращает номинал (value) для указанного промокода."""
+        async with self.pool.acquire() as conn:
+            row = await conn.fetchrow("SELECT value FROM promo_codes WHERE code = $1", code)
+            return row["value"] if row else None
 
     # --- Вспомогательные методы ---
 
