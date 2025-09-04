@@ -24,7 +24,8 @@ CREATE TABLE IF NOT EXISTS promo_codes (
     code VARCHAR(50) UNIQUE NOT NULL,
     admin_telegram_id BIGINT REFERENCES users(telegram_id) ON DELETE SET NULL,
     value NUMERIC(10,2) NOT NULL DEFAULT 750, -- номинал билета/цена со скидкой
-    is_used BOOLEAN NOT NULL DEFAULT FALSE,
+    usage_limit INTEGER NOT NULL DEFAULT 1,   -- сколько раз промокод можно использовать
+    used_count INTEGER NOT NULL DEFAULT 0,    -- сколько раз уже использован
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_promo_codes_admin ON promo_codes(admin_telegram_id);
@@ -58,9 +59,13 @@ CREATE INDEX IF NOT EXISTS idx_tickets_transaction ON tickets(transaction_id);
 CREATE OR REPLACE FUNCTION update_promo_used() RETURNS TRIGGER AS $$
 BEGIN
     IF NEW.promo_code_id IS NOT NULL THEN
-        UPDATE promo_codes SET is_used = TRUE WHERE id = NEW.promo_code_id AND is_used = FALSE;
+        UPDATE promo_codes
+        SET used_count = used_count + 1
+        WHERE id = NEW.promo_code_id
+          AND used_count < usage_limit;
+
         IF NOT FOUND THEN
-            RAISE EXCEPTION 'Промокод уже использован или не существует';
+            RAISE EXCEPTION 'Промокод уже использован максимальное количество раз или не существует';
         END IF;
     END IF;
     RETURN NEW;

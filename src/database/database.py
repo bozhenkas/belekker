@@ -84,14 +84,14 @@ class Database:
             async with conn.transaction():
                 promo_code_id = None
                 if promo_code:
-                    # Находим ID промокода. Триггер в БД проверит, не использован ли он.
+                    # Находим ID промокода. Проверяем, что использований меньше лимита
                     promo_code_id = await conn.fetchval(
-                        "SELECT id FROM promo_codes WHERE code = $1 AND is_used = FALSE", promo_code
+                        "SELECT id FROM promo_codes WHERE code = $1 AND used_count < usage_limit", promo_code
                     )
                     if not promo_code_id:
-                        raise ValueError("Промокод не найден или уже использован.")
+                        raise ValueError("Промокод не найден или использован полностью.")
 
-                # Вставляем транзакцию. Триггер сам обновит is_used у промокода.
+                # Вставляем транзакцию
                 transaction_id = await conn.fetchval(
                     """
                     INSERT INTO transactions (user_telegram_id, quantity, amount, promo_code_id, status)
@@ -100,6 +100,13 @@ class Database:
                     """,
                     user_telegram_id, quantity, amount, promo_code_id
                 )
+
+                # Обновляем счетчик использований промокода
+                if promo_code_id:
+                    await conn.execute(
+                        "UPDATE promo_codes SET used_count = used_count + 1 WHERE id = $1", promo_code_id
+                    )
+
                 return transaction_id
 
     async def add_purchase(self, telegram_id: int, qty: int, amount: int, repost: bool,
@@ -251,13 +258,15 @@ class Database:
 
     # --- Методы для работы с промокодами ---
 
-    async def create_promo_code(self, code: str, admin_telegram_id: int, value: float = 750) -> bool:
-        """Создает новый промокод с номиналом (цена билета со скидкой)."""
+    async def create_promo_code(self, code: str, admin_telegram_id: int, value: float = 750,
+                                usage_limit: int = 1) -> bool:
+        """Создает новый промокод с номиналом (цена билета со скидкой) и лимитом использований."""
         async with self.pool.acquire() as conn:
             try:
                 await conn.execute(
-                    "INSERT INTO promo_codes (code, admin_telegram_id, value) VALUES ($1, $2, $3)",
-                    code, admin_telegram_id, value
+                    "INSERT INTO promo_codes (code, admin_telegram_id, value, usage_limit, used_count) "
+                    "VALUES ($1, $2, $3, $4, 0)",
+                    code, admin_telegram_id, value, usage_limit
                 )
                 return True
             except asyncpg.UniqueViolationError:

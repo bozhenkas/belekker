@@ -22,14 +22,17 @@ load_dotenv()
 router = Router()
 
 
-async def _generate_promo(db: Database, admin_id: int, value: float = 750) -> Union[str, None]:
-    """Генерирует уникальный промокод с указанной суммой и добавляет его в БД."""
+async def _generate_promo(db: Database, admin_id: int, value: float = 750, usage_limit: int = 1) -> str | None:
+    """Генерирует уникальный промокод с указанной суммой и количеством доступных использований."""
+    import secrets, asyncio, logging
+
     code = secrets.token_hex(3).upper()  # генерим короткий промокод
     try:
-        success = await db.create_promo_code(code=code, admin_telegram_id=admin_id, value=value)
+        success = await db.create_promo_code(code=code, admin_telegram_id=admin_id, value=value,
+                                             usage_limit=usage_limit)
         if not success:
             logging.warning(f"Сгенерированный промокод {code} уже существует. Повторная попытка.")
-            return await _generate_promo(db, admin_id, value=value)
+            return await _generate_promo(db, admin_id, value=value, usage_limit=usage_limit)
         await asyncio.sleep(0.5)  # небольшая пауза для надежности
         return code
     except Exception as e:
@@ -42,13 +45,15 @@ async def promo_command(message: Message, db: Database):
     """
     Команда для генерации нового промокода.
     Форматы:
-      /promo         → промокод с номиналом 750
-      /promo 600     → промокод с номиналом 600
+      /promo             → промокод с номиналом 750 и 1 использованием
+      /promo 600         → промокод с номиналом 600 и 1 использованием
+      /promo 500 10      → промокод с номиналом 500 и 10 доступными использований
     """
     msgs = get_messages()
-
     parts = message.text.split()
     value = 750  # значение по умолчанию
+    usage_limit = 1  # количество использований по умолчанию
+
     if len(parts) > 1:
         try:
             value = float(parts[1])
@@ -56,12 +61,20 @@ async def promo_command(message: Message, db: Database):
             await message.answer(msgs["promo_invalid_value"])
             return
 
-    msg = await message.answer(msgs["promo_generating"])
+    if len(parts) > 2:
+        try:
+            usage_limit = int(parts[2])
+            if usage_limit < 1:
+                raise ValueError
+        except ValueError:
+            await message.answer(msgs["promo_invalid_usage"])
+            return
 
-    promo_code = await _generate_promo(db, message.from_user.id, value=value)
+    msg = await message.answer(msgs["promo_generating"])
+    promo_code = await _generate_promo(db, message.from_user.id, value=value, usage_limit=usage_limit)
 
     if promo_code:
-        await msg.edit_text(msgs["promo"].format(promo_code, value))
+        await msg.edit_text(msgs["promo"].format(promo_code, value, usage_limit))
     else:
         await msg.edit_text(msgs["promo_failed"])
 
