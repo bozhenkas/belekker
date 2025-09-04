@@ -22,15 +22,15 @@ load_dotenv()
 router = Router()
 
 
-async def _generate_promo(db: Database, admin_id: int) -> Union[str, None]:
-    """Генерирует уникальный промокод и добавляет его в БД."""
-    code = secrets.token_hex(3).upper()
+async def _generate_promo(db: Database, admin_id: int, value: float = 750) -> Union[str, None]:
+    """Генерирует уникальный промокод с указанной суммой и добавляет его в БД."""
+    code = secrets.token_hex(3).upper()  # генерим короткий промокод
     try:
-        success = await db.create_promo_code(code=code, admin_telegram_id=admin_id)
+        success = await db.create_promo_code(code=code, admin_telegram_id=admin_id, value=value)
         if not success:
             logging.warning(f"Сгенерированный промокод {code} уже существует. Повторная попытка.")
-            return await _generate_promo(db, admin_id)
-        await asyncio.sleep(1)
+            return await _generate_promo(db, admin_id, value=value)
+        await asyncio.sleep(0.5)  # небольшая пауза для надежности
         return code
     except Exception as e:
         logging.exception(f"Ошибка при создании промокода: {e}")
@@ -40,15 +40,30 @@ async def _generate_promo(db: Database, admin_id: int) -> Union[str, None]:
 @router.message(Command("promo"), F.from_user.id.in_(ADMINS))
 async def promo_command(message: Message, db: Database):
     """
-    Команда для генерации нового промокода. Доступна только администраторам.
+    Команда для генерации нового промокода.
+    Форматы:
+      /promo         → промокод с номиналом 750
+      /promo 600     → промокод с номиналом 600
     """
-    msg = await message.answer("🔄 генерирую новый промокод...")
-    promo_code = await _generate_promo(db, message.from_user.id)
+    msgs = get_messages()
+
+    parts = message.text.split()
+    value = 750  # значение по умолчанию
+    if len(parts) > 1:
+        try:
+            value = float(parts[1])
+        except ValueError:
+            await message.answer(msgs["promo_invalid_value"])
+            return
+
+    msg = await message.answer(msgs["promo_generating"])
+
+    promo_code = await _generate_promo(db, message.from_user.id, value=value)
 
     if promo_code:
-        await msg.edit_text(get_messages()["promo"].format(promo_code))
+        await msg.edit_text(msgs["promo_created"].format(promo_code, value))
     else:
-        await message.answer("Не удалось сгенерировать промокод. Пожалуйста, проверьте логи.")
+        await msg.edit_text(msgs["promo_failed"])
 
 
 @router.message(Command("afisha"), F.from_user.id.in_(ADMINS))
