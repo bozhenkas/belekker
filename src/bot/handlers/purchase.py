@@ -69,22 +69,20 @@ async def forward_to_group_and_log(
     if not group_chat_id:
         return
 
-    # все тексты берем из messages.yaml
-    msgs = get_messages()
-
     uname = (
         ("@" + message.from_user.username)
         if message.from_user.username
-        else (message.from_user.full_name or msgs["default_username"])
+        else (message.from_user.full_name or get_messages()["default_username"])
     )
 
     # сумма: берем прямо из транзакции
     total_amount = await db.get_transaction_amount(transaction_id)
 
-    repost_label = msgs["repost_true_label"] if repost else msgs["repost_false_label"]
+    promo_label = get_messages()["promo_label"] if total_amount not in (750, 900) else (
+        get_messages()["repost_true_label"] if repost else get_messages()["repost_false_label"])
 
     # сообщение модераторам
-    caption_text = msgs["moderation_caption"].format(uname, qty, repost_label, total_amount)
+    caption_text = get_messages()["moderation_caption"].format(uname, qty, promo_label, total_amount)
 
     kb = await admin_buttons(transaction_id)
 
