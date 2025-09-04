@@ -130,6 +130,16 @@ class Database:
             """
             return await conn.fetchrow(query, transaction_id)
 
+    async def get_transaction_amount(self, transaction_id: int) -> int:
+        """Возвращает сумму для транзакции с учетом промокода, если есть"""
+        row = await self.pool.fetchrow(
+            "SELECT amount FROM transactions WHERE id=$1",
+            transaction_id
+        )
+        if row:
+            return row["amount"]
+        return 0
+
     async def approve_transaction(self, transaction_id: int) -> list[str]:
         """
         Подтверждает транзакцию и создает билеты для пользователя.

@@ -84,7 +84,7 @@ async def forward_to_group_and_log(
         promo_value = await db.get_promo_value(promo_code)
         if promo_value is None:
             promo_value = 750  # fallback на всякий случай
-        total_amount = promo_value * qty
+        total_amount = await db.get_transaction_amount(transaction_id)
     else:
         per_ticket = 750 if repost else 900
         total_amount = per_ticket * qty
