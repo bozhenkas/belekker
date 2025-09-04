@@ -36,7 +36,7 @@ async def forward_to_group_and_log(
         data: dict,
         repost: bool,
         transaction_id: int,
-        db: Database,  # теперь сюда передаем db
+        db: Database,
 ):
     try:
         # логируем метаданные (для альбома — список файлов через |)
@@ -78,16 +78,8 @@ async def forward_to_group_and_log(
         else (message.from_user.full_name or msgs["default_username"])
     )
 
-    # сумма: если есть промокод в state → берем value из БД
-    promo_code = data.get("promo_code")
-    if promo_code:
-        promo_value = await db.get_promo_value(promo_code)
-        if promo_value is None:
-            promo_value = 750  # fallback на всякий случай
-        total_amount = await db.get_transaction_amount(transaction_id)
-    else:
-        per_ticket = 750 if repost else 900
-        total_amount = per_ticket * qty
+    # сумма: берем прямо из транзакции
+    total_amount = await db.get_transaction_amount(transaction_id)
 
     repost_label = msgs["repost_true_label"] if repost else msgs["repost_false_label"]
 
