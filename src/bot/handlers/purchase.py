@@ -260,7 +260,7 @@ async def check_promo_code(message: Message, state: FSMContext, db: Database):
 
 @router.message(PurchaseState.waiting_payment_proof, F.photo)
 async def got_proof(message: Message, state: FSMContext, **data):
-    # Cоздаем транзакцию в БД
+    # создаем транзакцию в БД
     sd = await state.get_data()
     qty = sd.get("qty", 1)
     repost = sd.get("repost", False)
@@ -326,7 +326,8 @@ async def got_proof(message: Message, state: FSMContext, **data):
                     meta.get("ts", ts),
                     meta.get("data", data),
                     meta.get("repost", repost),
-                    local_transaction_id
+                    local_transaction_id,
+                    db
                 )
                 await message.answer(get_messages()["on_review"])
                 await state.set_state(PurchaseState.on_review)
@@ -343,7 +344,8 @@ async def got_proof(message: Message, state: FSMContext, **data):
         ts,
         data,
         repost,
-        transaction_id
+        transaction_id,
+        db
     )
     await message.answer(get_messages()["on_review"])
     await state.set_state(PurchaseState.on_review)
