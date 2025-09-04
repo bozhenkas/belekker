@@ -13,9 +13,10 @@ async def kb_buy_choice() -> types.InlineKeyboardMarkup:
 async def kb_choosing_price() -> types.InlineKeyboardMarkup:
     # выбор покупки: один или больше
     k = [
-        [types.InlineKeyboardButton(text='с репостом', callback_data='repost:true'),
-         types.InlineKeyboardButton(text='без репоста', callback_data='repost:false')],
-        [types.InlineKeyboardButton(text='сделать репост', url='https://instagram.com/belekkerx')],
+        [types.InlineKeyboardButton(text='с промиком', callback_data='repost:true'),
+         types.InlineKeyboardButton(text='без промика', callback_data='repost:false')],
+        [types.InlineKeyboardButton(text='промокод за репост',
+                                    url='https://www.instagram.com/p/DN6MRP1iMA4/?igsh=bWJ5dzg4Zm12bzlm')],
         [types.InlineKeyboardButton(text='⤝ назад', callback_data='back')]
     ]
     return types.InlineKeyboardMarkup(inline_keyboard=k)
