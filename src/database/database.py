@@ -305,87 +305,14 @@ class Database:
             )
             return amount if amount is not None else 0.0
 
-    async def export_transactions_csv(self) -> str:
+    async def export_users_csv(self) -> str:
         """
-        Экспортирует данные по всем транзакциям в CSV-файл.
+        Экспортирует данные по всем пользователям и количеству их активных билетов в CSV файл.
         """
-        filename = f"stats_exports/transactions_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+        filename = f"stats_exports/users_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+        os.makedirs("stats_exports", exist_ok=True)
 
         async with self.pool.acquire() as conn:
-            records = await conn.fetch("""
-                SELECT
-                    id,
-                    user_telegram_id,
-                    quantity,
-                    amount,
-                    status,
-                    created_at
-                FROM transactions
-                ORDER BY created_at DESC;
-            """)
-
-        headers = ["id", "user_telegram_id", "quantity", "amount", "status", "created_at"]
-
-        with open(filename, "w", newline="", encoding="utf-8") as f:
-            writer = csv.DictWriter(f, fieldnames=headers)
-            writer.writeheader()
-            for row in records:
-                writer.writerow({
-                    "id": row['id'],
-                    "user_telegram_id": row['user_telegram_id'],
-                    "quantity": row['quantity'],
-                    "amount": row['amount'],
-                    "status": row['status'],
-                    "created_at": row['created_at'].isoformat() if row['created_at'] else ''
-                })
-
-        return filename
-
-    async def export_tickets_csv(self) -> str:
-        """
-        Экспортирует данные по всем билетам в CSV-файл.
-        """
-        filename = f"stats_exports/tickets_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
-
-        async with self.pool.acquire() as conn:
-            records = await conn.fetch("""
-                SELECT
-                    id,
-                    token,
-                    owner_telegram_id,
-                    transaction_id,
-                    status,
-                    created_at
-                FROM tickets
-                ORDER BY created_at DESC;
-            """)
-
-        headers = ["id", "token", "owner_telegram_id", "transaction_id", "status", "created_at"]
-
-        with open(filename, "w", newline="", encoding="utf-8") as f:
-            writer = csv.DictWriter(f, fieldnames=headers)
-            writer.writeheader()
-            for row in records:
-                writer.writerow({
-                    "id": row['id'],
-                    "token": row['token'],
-                    "owner_telegram_id": row['owner_telegram_id'],
-                    "transaction_id": row['transaction_id'],
-                    "status": row['status'],
-                    "created_at": row['created_at'].isoformat() if row['created_at'] else ''
-                })
-
-        return filename
-
-    async def export_csv(self) -> str:
-        """
-        Экспортирует данные пользователей и количество их активных билетов в CSV файл.
-        """
-        filename = f"cache/users_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
-        os.makedirs("cache", exist_ok=True)
-
-        async with self.pool.acquire() as conn:
-            # Используем LEFT JOIN, чтобы включить пользователей даже без билетов
             data = await conn.fetch("""
                 SELECT
                     u.id,
@@ -395,7 +322,7 @@ class Database:
                     COUNT(t.id) FILTER (WHERE t.status = 'active') AS active_tickets_count
                 FROM users u
                 LEFT JOIN tickets t ON u.telegram_id = t.owner_telegram_id
-                GROUP BY u.id
+                GROUP BY u.id, u.telegram_id, u.username, u.created_at
                 ORDER BY u.id;
             """)
 
@@ -403,12 +330,13 @@ class Database:
 
         with open(filename, "w", newline="", encoding="utf-8") as f:
             writer = csv.writer(f)
+            writer.writerow(headers)  # заголовки
             for row in data:
                 writer.writerow([
                     row['id'],
                     row['telegram_id'],
-                    row['username'],
-                    row['created_at'].strftime('%Y-%m-%d %H:%M:%S'),
+                    row['username'] if row['username'] else '',
+                    row['created_at'].strftime('%Y-%m-%d %H:%M:%S') if row['created_at'] else '',
                     row['active_tickets_count']
                 ])
 

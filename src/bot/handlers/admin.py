@@ -278,3 +278,24 @@ async def stats_tickets_command(message: Message, db: Database):
     except Exception as e:
         logging.exception("Ошибка при экспорте билетов.")
         await message.answer("Не удалось сгенерировать отчет. Пожалуйста, проверьте логи.")
+
+
+@router.message(Command("stats_users"), F.from_user.id.in_(ADMINS))
+async def stats_users_command(message: Message, db: Database):
+    """
+    Экспортирует и отправляет CSV-файл со всеми пользователями и их активными билетами.
+    """
+    try:
+        msg = await message.answer("🔄 Генерирую файл со списком пользователей...")
+        csv_file_path = await db.export_users_csv()
+
+        await message.answer_document(
+            document=types.FSInputFile(csv_file_path),
+            caption="Отчет по пользователям и активным билетам."
+        )
+
+        await msg.delete()
+        os.remove(csv_file_path)  # Удаляем временный файл
+    except Exception as e:
+        logging.exception("Ошибка при экспорте пользователей.")
+        await message.answer("Не удалось сгенерировать отчет. Пожалуйста, проверьте логи.")
