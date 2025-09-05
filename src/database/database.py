@@ -341,3 +341,77 @@ class Database:
                 ])
 
         return filename
+
+    async def export_transactions_csv(self) -> str:
+        """
+        Экспортирует данные по всем транзакциям в CSV-файл.
+        """
+        filename = f"stats_exports/transactions_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+        os.makedirs("stats_exports", exist_ok=True)
+
+        async with self.pool.acquire() as conn:
+            records = await conn.fetch("""
+                SELECT
+                    id,
+                    user_telegram_id,
+                    quantity,
+                    amount,
+                    status,
+                    created_at
+                FROM transactions
+                ORDER BY created_at DESC;
+            """)
+
+        headers = ["id", "user_telegram_id", "quantity", "amount", "status", "created_at"]
+
+        with open(filename, "w", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f)
+            writer.writerow(headers)
+            for row in records:
+                writer.writerow([
+                    row["id"],
+                    row["user_telegram_id"],
+                    row["quantity"],
+                    float(row["amount"]),  # чтобы всегда было число
+                    row["status"],
+                    row["created_at"].strftime("%Y-%m-%d %H:%M:%S") if row["created_at"] else ""
+                ])
+
+        return filename
+
+    async def export_tickets_csv(self) -> str:
+        """
+        Экспортирует данные по всем билетам в CSV-файл.
+        """
+        filename = f"stats_exports/tickets_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+        os.makedirs("stats_exports", exist_ok=True)
+
+        async with self.pool.acquire() as conn:
+            records = await conn.fetch("""
+                SELECT
+                    id,
+                    token,
+                    owner_telegram_id,
+                    transaction_id,
+                    status,
+                    created_at
+                FROM tickets
+                ORDER BY created_at DESC;
+            """)
+
+        headers = ["id", "token", "owner_telegram_id", "transaction_id", "status", "created_at"]
+
+        with open(filename, "w", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f)
+            writer.writerow(headers)
+            for row in records:
+                writer.writerow([
+                    row["id"],
+                    row["token"],
+                    row["owner_telegram_id"],
+                    row["transaction_id"],
+                    row["status"],
+                    row["created_at"].strftime("%Y-%m-%d %H:%M:%S") if row["created_at"] else ""
+                ])
+
+        return filename
