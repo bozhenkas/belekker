@@ -28,6 +28,7 @@ services:
       - ./src:/app/src
       - ./cache:/app/cache
       - ./.env:/app/.env
+      - ./assets:/app/assets
     restart: unless-stopped
 
 volumes:

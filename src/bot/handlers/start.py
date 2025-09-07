@@ -24,8 +24,10 @@ async def cmd_start(message: Message, **data):
 async def info(message: Message):
     file_id = os.getenv("FILE_ID")
     if not file_id:
-        msg = await message.answer_photo(types.FSInputFile("src/afisha.jpg"), caption=get_messages()['info_text'],
-                                         reply_markup=await kb_back_only())
+        msg = await message.answer_photo(
+            types.FSInputFile("assets/afisha.jpg"),
+            caption=get_messages()['info_text'],
+        )
         file_id = msg.photo[-1].file_id
         with open(".env", "a") as f:
             f.write(f"\nFILE_ID={file_id}")
