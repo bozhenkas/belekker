@@ -156,13 +156,21 @@ async def back_from_qty(call: CallbackQuery, state: FSMContext):
 @router.callback_query(PurchaseState.waiting_payment_confirm, F.data == "back")
 async def back_from_requisites(call: CallbackQuery, state: FSMContext):
     data = await state.get_data()
-    await call.message.answer('data:', str(data))
-    if data.get("came_from") == "one":
-        await state.clear()
-        await call.message.edit_text(get_messages()["choose_quantity"], reply_markup=await kb_buy_choice())
+    # Удаляем отладочный вывод
+    # await call.message.answer('data:', str(data))
+
+    # Определяем, куда вернуться в зависимости от того, как пользователь пришел к выбору цены
+    # Если был введен промокод, то нужно вернуться к выбору промокода.
+    # Иначе - к выбору цены (с репостом/без).
+    if data.get("promo_code"):
+        # Если был промокод, возвращаемся к его вводу
+        await call.message.edit_text(get_messages()["ask_promo_code"], reply_markup=await kb_promo_code())
+        await state.set_state(PurchaseState.waiting_promo_code)
     else:
-        await call.message.edit_text(get_messages()["choose_quantity"], reply_markup=await kb_quantity())
-        await state.set_state(PurchaseState.choosing_quantity)
+        # Иначе возвращаемся к выбору цены (с репостом/без), сохраняя qty
+        await call.message.edit_text(get_messages()["choosing_price"], reply_markup=await kb_choosing_price())
+        await state.set_state(PurchaseState.choosing_price)
+
     await call.answer()
 
 
@@ -187,14 +195,19 @@ async def choose_price(call: CallbackQuery, state: FSMContext):
     sd = await state.get_data()
     qty = int(sd.get("qty", 1))
 
-    per_ticket = 900 if not repost else 0  # если репост, цену подтянем позже
+    # per_ticket = 900 if not repost else 0  # если репост, цену подтянем позже. Это была ошибка.
+    # Корректная логика: 750 с репостом, 900 без репоста.
+    per_ticket = 750 if repost else 900
     total_amount = per_ticket * qty
     await state.update_data(amount=total_amount)
 
     if repost:
+        # Если выбран репост (т.е. цена 750), предлагаем ввести промокод.
+        # Если промокод будет введен, total_amount может измениться.
         await call.message.edit_text(get_messages()["ask_promo_code"], reply_markup=await kb_promo_code())
         await state.set_state(PurchaseState.waiting_promo_code)
     else:
+        # Если без репоста (цена 900), сразу к реквизитам.
         await call.message.edit_text(
             get_messages()["payment_requisites"].format(total_amount),
             reply_markup=await kb_confirm_paid(),
@@ -206,6 +219,8 @@ async def choose_price(call: CallbackQuery, state: FSMContext):
 
 @router.callback_query(PurchaseState.waiting_promo_code, F.data == "back")
 async def back_from_promo(call: CallbackQuery, state: FSMContext):
+    # При возврате из состояния ввода промокода, возвращаемся к выбору цены (с репостом/без)
+    await state.update_data(promo_code=None) # Очищаем промокод, если пользователь вернулся
     await call.message.edit_text(get_messages()["choosing_price"], reply_markup=await kb_choosing_price())
     await state.set_state(PurchaseState.choosing_price)
     await call.answer()
@@ -213,9 +228,12 @@ async def back_from_promo(call: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data == "back")
 async def back(call: CallbackQuery, state: FSMContext):
-    # назад к выбору купить 1/больше (инлайн)
+    # этот обработчик ловит "back" из kb_back_only, который используется в info, buy_ticket
+    # и должен возвращать в главное меню (ReplyKeyboard)
+    # Если FSM-состояние активно, оно будет обработано более специфичными хэндлерами выше.
+    # Если нет активного FSM-состояния, этот хэндлер сработает.
     await state.clear()
-    await call.message.edit_text(get_messages()["choose_quantity"], reply_markup=await kb_buy_choice())
+    await call.message.edit_text(get_messages()['choose_quantity'], reply_markup=await kb_buy_choice())
     await call.answer()
 
 
@@ -224,13 +242,14 @@ async def check_promo_code(message: Message, state: FSMContext, db: Database):
     promo_code = message.text.strip()
     promo_data = await db.get_promo_code(promo_code)
 
+    # Проверка, что promo_data не None и что промокод не использован полностью.
     if not promo_data or promo_data['used_count'] >= promo_data['usage_limit']:
         await message.answer(get_messages()["promo_code_invalid"])
         return
 
     # Получаем value для этого промокода
-    promo_value = await db.get_promo_value(promo_code)
-    if promo_value is None:
+    promo_value = promo_data['value'] # Используем значение из promo_data, чтобы избежать лишнего запроса
+    if promo_value is None: # На случай, если каким-то образом value оказалось None (чего быть не должно)
         await message.answer(get_messages()["promo_code_invalid"])
         return
 
