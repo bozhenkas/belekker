@@ -423,10 +423,10 @@ class Database:
         """
         async with self.pool.acquire() as conn:
             records = await conn.fetch("""
-                SELECT DISTINCT u.telegram_id, u.username
+                SELECT DISTINCT ON (u.telegram_id) u.telegram_id, u.username
                 FROM tickets t
                 JOIN users u ON u.telegram_id = t.owner_telegram_id
-                ORDER BY u.id;
+                ORDER BY u.telegram_id;
             """)
             result = []
             for r in records:
