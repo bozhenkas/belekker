@@ -299,3 +299,27 @@ async def stats_users_command(message: Message, db: Database):
     except Exception as e:
         logging.exception("Ошибка при экспорте пользователей.")
         await message.answer("Не удалось сгенерировать отчет. Пожалуйста, проверьте логи.")
+
+@router.message(Command("stats_tickets_users"), F.from_user.id.in_(ADMINS))
+async def stats_tickets_users_command(message: Message, db: Database):
+    """
+    Выводит список пользователей, у которых есть билеты.
+    """
+    try:
+        owners = await db.get_ticket_owners()
+        if not owners:
+            await message.answer("❌ Билетов ни у кого нет.")
+            return
+
+        text = "👥 Пользователи с билетами:\n" + "\n".join(owners)
+        # Чтобы не превысить лимит Telegram на 4096 символов:
+        if len(text) > 4000:
+            chunks = [text[i:i+4000] for i in range(0, len(text), 4000)]
+            for chunk in chunks:
+                await message.answer(chunk)
+        else:
+            await message.answer(text)
+
+    except Exception as e:
+        logging.exception("Ошибка при получении списка пользователей с билетами.")
+        await message.answer("Не удалось получить список. Проверьте логи.")

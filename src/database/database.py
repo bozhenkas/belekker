@@ -415,3 +415,23 @@ class Database:
                 ])
 
         return filename
+
+    async def get_ticket_owners(self) -> list[str]:
+        """
+        Возвращает список пользователей, у которых есть билеты,
+        в формате @username (или telegram_id, если username пустой).
+        """
+        async with self.pool.acquire() as conn:
+            records = await conn.fetch("""
+                SELECT DISTINCT u.telegram_id, u.username
+                FROM tickets t
+                JOIN users u ON u.telegram_id = t.owner_telegram_id
+                ORDER BY u.id;
+            """)
+            result = []
+            for r in records:
+                if r["username"]:
+                    result.append(f"@{r['username']}")
+                else:
+                    result.append(str(r["telegram_id"]))
+            return result
