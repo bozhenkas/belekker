@@ -1,21 +1,22 @@
--- Drop the database if it exists (run this connected to another DB like 'postgres')
-DROP DATABASE IF EXISTS ticket_bot_db;
+-- Этот скрипт предназначен для инициализации схемы в УЖЕ СУЩЕСТВУЮЩЕЙ базе данных.
+-- Создание самой БД теперь обрабатывается через docker-compose.yml.
 
--- Create the database
-CREATE DATABASE ticket_bot_db;
-
--- Connect to the new database (in psql: \c ticket_bot_db)
-
--- Enable extension
+-- Включаем расширение для поиска по части слова
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
 
--- Create tables and indexes
+-- Создаем таблицы, только если они еще не существуют
+
 CREATE TABLE IF NOT EXISTS users (
     id SERIAL PRIMARY KEY,
     telegram_id BIGINT UNIQUE NOT NULL,
     username VARCHAR(255),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
+
+-- === НОВАЯ КОМАНДА МИГРАЦИИ ===
+-- Добавляем столбец 'name', только если он отсутствует
+ALTER TABLE users ADD COLUMN IF NOT EXISTS name VARCHAR(255);
+
 CREATE INDEX IF NOT EXISTS idx_users_telegram_id ON users(telegram_id);
 CREATE INDEX IF NOT EXISTS idx_users_username_trgm ON users USING GIN (username gin_trgm_ops);
 
@@ -23,9 +24,9 @@ CREATE TABLE IF NOT EXISTS promo_codes (
     id SERIAL PRIMARY KEY,
     code VARCHAR(50) UNIQUE NOT NULL,
     admin_telegram_id BIGINT REFERENCES users(telegram_id) ON DELETE SET NULL,
-    value NUMERIC(10,2) NOT NULL DEFAULT 750, -- номинал билета/цена со скидкой
-    usage_limit INTEGER NOT NULL DEFAULT 1,   -- сколько раз промокод можно использовать
-    used_count INTEGER NOT NULL DEFAULT 0,    -- сколько раз уже использован
+    value NUMERIC(10,2) NOT NULL DEFAULT 750,
+    usage_limit INTEGER NOT NULL DEFAULT 1,
+    used_count INTEGER NOT NULL DEFAULT 0,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_promo_codes_admin ON promo_codes(admin_telegram_id);
@@ -55,7 +56,7 @@ CREATE TABLE IF NOT EXISTS tickets (
 CREATE INDEX IF NOT EXISTS idx_tickets_owner ON tickets(owner_telegram_id);
 CREATE INDEX IF NOT EXISTS idx_tickets_transaction ON tickets(transaction_id);
 
--- Create function and trigger
+-- Создаем или заменяем функцию и триггер
 CREATE OR REPLACE FUNCTION update_promo_used() RETURNS TRIGGER AS $$
 BEGIN
     IF NEW.promo_code_id IS NOT NULL THEN

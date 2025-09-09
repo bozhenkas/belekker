@@ -39,25 +39,26 @@ class Database:
 
     # --- Методы для работы с пользователями ---
 
-    async def add_user(self, telegram_id: int, username: str) -> bool:
+    async def add_user(self, telegram_id: int, username: str, name: str) -> bool:  # <-- Добавили name
         """
         Добавляет нового пользователя в базу данных.
-        Возвращает True, если пользователь был добавлен, и False, если он уже существует.
+        Если пользователь существует, обновляет его username и name.
+        Возвращает True, если пользователь был добавлен, и False, если обновлен.
         """
         async with self.pool.acquire() as conn:
-            # Проверяем, существует ли пользователь
-            exists = await conn.fetchval(
-                "SELECT 1 FROM users WHERE telegram_id = $1", telegram_id
+            result = await conn.execute(
+                """
+                INSERT INTO users (telegram_id, username, name)
+                VALUES ($1, $2, $3)
+                ON CONFLICT (telegram_id) DO UPDATE SET
+                    username = EXCLUDED.username,
+                    name = EXCLUDED.name,
+                    created_at = users.created_at;
+                """,
+                telegram_id, username, name
             )
-            if exists:
-                return False  # Пользователь уже в базе
-
-            # Добавляем нового пользователя
-            await conn.execute(
-                "INSERT INTO users (telegram_id, username) VALUES ($1, $2)",
-                telegram_id, username
-            )
-            return True
+            # INSERT ... возвращает "INSERT 0 1", если была вставка
+            return result.startswith("INSERT")
 
     async def get_user_by_telegram_id(self, telegram_id: int):
         """Возвращает данные пользователя по его telegram_id."""
