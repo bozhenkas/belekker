@@ -319,15 +319,17 @@ class Database:
                     u.id,
                     u.telegram_id,
                     u.username,
+                    u.name, 
                     u.created_at,
                     COUNT(t.id) FILTER (WHERE t.status = 'active') AS active_tickets_count
                 FROM users u
                 LEFT JOIN tickets t ON u.telegram_id = t.owner_telegram_id
-                GROUP BY u.id, u.telegram_id, u.username, u.created_at
+                GROUP BY u.id, u.telegram_id, u.username, u.name, u.created_at
                 ORDER BY u.id;
             """)
 
-        headers = ["id", "telegram_id", "username", "registration_date", "active_tickets_count"]
+        # Добавляем 'name' в заголовок
+        headers = ["id", "telegram_id", "username", "name", "registration_date", "active_tickets_count"]
 
         with open(filename, "w", newline="", encoding="utf-8") as f:
             writer = csv.writer(f)
@@ -337,6 +339,7 @@ class Database:
                     row['id'],
                     row['telegram_id'],
                     row['username'] if row['username'] else '',
+                    row['name'] if row['name'] else '',
                     row['created_at'].strftime('%Y-%m-%d %H:%M:%S') if row['created_at'] else '',
                     row['active_tickets_count']
                 ])
