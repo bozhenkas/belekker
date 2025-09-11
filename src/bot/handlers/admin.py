@@ -346,7 +346,6 @@ async def mailing_command(message: Message, db: Database):
     # 2. Получаем список ID пользователей без билетов
     try:
         user_ids = await db.get_users_without_tickets()
-        user_ids = [294057781, 344917183]
         if not user_ids:
             await message.answer("Все зарегистрированные пользователи уже купили билеты. Рассылка отменена.")
             return
