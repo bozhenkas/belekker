@@ -439,3 +439,23 @@ class Database:
                 else:
                     result.append(str(r["telegram_id"]))
             return result
+
+    async def get_users_without_tickets(self) -> list[int]:
+        """
+        Возвращает список telegram_id тех пользователей,
+        которые зарегистрированы в боте, но не имеют ни одного билета.
+        """
+        async with self.pool.acquire() as conn:
+            # Используем NOT EXISTS, так как это очень эффективный способ
+            # найти записи в одной таблице, для которых нет соответствий в другой.
+            query = """
+                SELECT u.telegram_id
+                FROM users u
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM tickets t WHERE t.owner_telegram_id = u.telegram_id
+                );
+            """
+            records = await conn.fetch(query)
+
+            # Преобразуем список записей (records) в простой список чисел (IDs)
+            return [record['telegram_id'] for record in records]

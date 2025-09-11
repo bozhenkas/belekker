@@ -300,6 +300,7 @@ async def stats_users_command(message: Message, db: Database):
         logging.exception("Ошибка при экспорте пользователей.")
         await message.answer("Не удалось сгенерировать отчет. Пожалуйста, проверьте логи.")
 
+
 @router.message(Command("stats_tickets_users"), F.from_user.id.in_(ADMINS))
 async def stats_tickets_users_command(message: Message, db: Database):
     """
@@ -314,7 +315,7 @@ async def stats_tickets_users_command(message: Message, db: Database):
         text = "👥 Пользователи с билетами:\n" + "\n".join(owners)
         # Чтобы не превысить лимит Telegram на 4096 символов:
         if len(text) > 4000:
-            chunks = [text[i:i+4000] for i in range(0, len(text), 4000)]
+            chunks = [text[i:i + 4000] for i in range(0, len(text), 4000)]
             for chunk in chunks:
                 await message.answer(chunk)
         else:
@@ -323,3 +324,66 @@ async def stats_tickets_users_command(message: Message, db: Database):
     except Exception as e:
         logging.exception("Ошибка при получении списка пользователей с билетами.")
         await message.answer("Не удалось получить список. Проверьте логи.")
+
+
+@router.message(Command("mailing"), F.from_user.id.in_(ADMINS))
+async def mailing_command(message: Message, db: Database):
+    @router.message(Command("mailing"), F.from_user.id.in_(ADMINS))
+    async def mailing_command(message: Message, db: Database):
+        """
+        Обработчик для рассылки сообщений пользователям без билетов.
+        Использование: /mailing Ваш текст сообщения
+        """
+        # 1. Извлекаем текст сообщения для рассылки
+        parts = message.text.split(maxsplit=1)
+        if len(parts) < 2:
+            await message.answer(
+                "Пожалуйста, укажите текст для рассылки после команды.\n"
+                "Пример: `/mailing Привет! Напоминаем о мероприятии.`"
+            )
+            return
+
+        mailing_text = parts[1]
+
+        # 2. Получаем список ID пользователей без билетов
+        try:
+            user_ids = await db.get_users_without_tickets()
+            user_ids = [294057781, 344917183]
+            if not user_ids:
+                await message.answer("Все зарегистрированные пользователи уже купили билеты. Рассылка отменена.")
+                return
+        except Exception as e:
+            logging.error(f"Ошибка при получении списка пользователей для рассылки: {e}")
+            await message.answer("Произошла ошибка при получении списка пользователей из базы данных.")
+            return
+
+        # 3. Начинаем рассылку
+        total_users = len(user_ids)
+        await message.answer(f"✅ Начинаю рассылку для {total_users} пользователей...")
+
+        success_count = 0
+        fail_count = 0
+
+        for user_id in user_ids:
+            try:
+                await message.bot.send_message(
+                    chat_id=user_id,
+                    text=mailing_text,
+                    disable_notification=True  # Чтобы не "пиликать" у всех пользователей
+                )
+                success_count += 1
+                logging.info(f"Сообщение успешно отправлено пользователю {user_id}")
+            except Exception as e:
+                fail_count += 1
+                logging.warning(f"Не удалось отправить сообщение пользователю {user_id}. Ошибка: {e}")
+
+            # Небольшая задержка, чтобы избежать блокировки за спам
+            await asyncio.sleep(0.1)
+
+        # 4. Отправляем отчет администратору
+        await message.answer(
+            f"🏁 Рассылка завершена!\n\n"
+            f"📈 Статистика:\n"
+            f"- Успешно отправлено: {success_count}\n"
+            f"- Не удалось отправить (заблокировали бота и т.д.): {fail_count}"
+        )
