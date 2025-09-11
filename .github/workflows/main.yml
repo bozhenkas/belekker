@@ -1,4 +1,4 @@
-name: python CD
+name: Python CD
 
 on:
   push:
@@ -21,12 +21,14 @@ jobs:
           key: ${{ secrets.PRIVATE_KEY }}
           port: 17904
           script: |
+            # Переходим в директорию проекта
             cd ~/belekker
-            # Обновляем локальную ветку, разрешая fast-forward только
+            
+            # 1. Обновляем код из репозитория
             git fetch origin main
             git reset --hard origin/main
-            # Проверим статус
-            git status
-            # Перезапуск Docker
-            docker-compose down
-            docker-compose up --build -d
+            
+            # 2. Безопасно обновляем и перезапускаем сервисы
+            # Эта команда НЕ УДАЛЯЕТ базу данных или ее данные.
+            # Она только пересобирает образ бота и перезапускает его контейнер.
+            docker-compose up --build -d --remove-orphans
