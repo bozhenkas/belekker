@@ -11,7 +11,7 @@ services:
       - db_data:/var/lib/postgresql/data
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql
     healthcheck:
-      start_period: 10s  # <-- САМОЕ ВАЖНОЕ: Дать 30 секунд на первый запуск ДО начала проверок
+      start_period: 10s  # 10 секунд на первый запуск ДО начала проверок
       test: [ "CMD-SHELL", "pg_isready -U postgres" ]
       interval: 10s      # Проверять каждые 10 секунд
       timeout: 5s        # Таймаут самой проверки
