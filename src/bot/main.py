@@ -34,9 +34,9 @@ async def main():
     dp.message.middleware(AddUserMiddleware())
     dp.callback_query.middleware(AddUserMiddleware())
 
+    dp.include_router(admin.router)
     dp.include_router(start.router)
     dp.include_router(purchase.router)
-    dp.include_router(admin.router)
 
     try:
         # await bot.delete_webhook(drop_pending_updates=True)
