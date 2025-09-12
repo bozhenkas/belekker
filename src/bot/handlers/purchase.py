@@ -197,7 +197,7 @@ async def choose_price(call: CallbackQuery, state: FSMContext):
 
     # per_ticket = 900 if not repost else 0  # если репост, цену подтянем позже. Это была ошибка.
     # Корректная логика: 750 с репостом, 900 без репоста.
-    per_ticket = 750 if repost else 900
+    per_ticket = 750 if repost else 1100
     total_amount = per_ticket * qty
     await state.update_data(amount=total_amount)
 
@@ -220,7 +220,7 @@ async def choose_price(call: CallbackQuery, state: FSMContext):
 @router.callback_query(PurchaseState.waiting_promo_code, F.data == "back")
 async def back_from_promo(call: CallbackQuery, state: FSMContext):
     # При возврате из состояния ввода промокода, возвращаемся к выбору цены (с репостом/без)
-    await state.update_data(promo_code=None) # Очищаем промокод, если пользователь вернулся
+    await state.update_data(promo_code=None)  # Очищаем промокод, если пользователь вернулся
     await call.message.edit_text(get_messages()["choosing_price"], reply_markup=await kb_choosing_price())
     await state.set_state(PurchaseState.choosing_price)
     await call.answer()
@@ -248,8 +248,8 @@ async def check_promo_code(message: Message, state: FSMContext, db: Database):
         return
 
     # Получаем value для этого промокода
-    promo_value = promo_data['value'] # Используем значение из promo_data, чтобы избежать лишнего запроса
-    if promo_value is None: # На случай, если каким-то образом value оказалось None (чего быть не должно)
+    promo_value = promo_data['value']  # Используем значение из promo_data, чтобы избежать лишнего запроса
+    if promo_value is None:  # На случай, если каким-то образом value оказалось None (чего быть не должно)
         await message.answer(get_messages()["promo_code_invalid"])
         return
 
