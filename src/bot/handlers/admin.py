@@ -393,8 +393,10 @@ async def handle_ticket_scan(message: Message, command: CommandObject, db: Datab
     Обрабатывает сканирование QR-кода билета администратором.
     Отправляет информацию о владельце и кнопку для отметки.
     """
+
     msgs = get_messages()
     token = command.args
+    print(token)
     if not token:
         await message.answer(msgs["ticket_scan_token_error"])
         return
