@@ -220,24 +220,33 @@ async def reject(callback: CallbackQuery, db: Database):
 @router.message(Command("stats_info"), F.from_user.id.in_(ADMINS))
 async def stats_info_command(message: Message, db: Database):
     """
-    Показывает общую статистику по боту.
+    Показывает общую статистику по боту с разбивкой билетов по статусам.
     """
+    msgs = get_messages()
     try:
         total_users = await db.count_users()
-        total_active_tickets = await db.count_tickets()
         total_sales_amount = await db.get_total_sales_amount()
+        ticket_stats = await db.get_ticket_stats()
 
-        stats_message = (
-            f"📊 <b>Статистика по боту:</b>\n\n"
-            f"👥 Всего пользователей: <b>{total_users}</b>\n"
-            f"🎟️ Всего активных билетов: <b>{total_active_tickets}</b>\n"
-            f"💰 Общая сумма продаж: <b>{total_sales_amount:.2f}</b> руб."
+        # Получаем данные из записи. Если таблица билетов пуста, stats может быть None
+        active_tickets = ticket_stats['active_tickets'] if ticket_stats else 0
+        used_tickets = ticket_stats['used_tickets'] if ticket_stats else 0
+        total_tickets = active_tickets + used_tickets
+
+        # Формируем и отправляем сообщение
+        stats_message = msgs["stats_info_message"].format(
+            total_users=total_users,
+            total_sales_amount=total_sales_amount,
+            total_tickets=total_tickets,
+            active_tickets=active_tickets,
+            used_tickets=used_tickets
         )
 
-        await message.answer(stats_message, parse_mode='HTML')
+        await message.answer(stats_message)
+
     except Exception as e:
         logging.exception("Ошибка при получении статистики.")
-        await message.answer("Не удалось получить статистику. Пожалуйста, проверьте логи.")
+        await message.answer(msgs["stats_generic_error"])
 
 
 @router.message(Command("stats_transactions"), F.from_user.id.in_(ADMINS))

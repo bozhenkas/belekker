@@ -287,6 +287,23 @@ class Database:
             """
             return await conn.fetchrow(query, token)
 
+    async def get_ticket_stats(self) -> asyncpg.Record:
+        """
+        Возвращает статистику по билетам, сгруппированную по статусам.
+        Возвращает запись с полями active_tickets и used_tickets.
+        """
+        async with self.pool.acquire() as conn:
+            # Этот запрос вернет одну строку с двумя колонками: active_tickets и used_tickets
+            query = """
+                SELECT
+                    COUNT(*) FILTER (WHERE status = 'active') AS active_tickets,
+                    COUNT(*) FILTER (WHERE status = 'used') AS used_tickets
+                FROM tickets;
+            """
+            # fetchrow вернет одну запись (asyncpg.Record) или None, если таблица пуста
+            stats = await conn.fetchrow(query)
+            return stats
+
     # --- Методы для работы с промокодами ---
 
     async def create_promo_code(self, code: str, admin_telegram_id: int, value: float = 750,
