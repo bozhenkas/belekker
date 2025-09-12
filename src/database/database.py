@@ -267,6 +267,26 @@ class Database:
             count = await conn.fetchval("SELECT COUNT(*) FROM tickets WHERE status = 'active'")
             return count if count is not None else 0
 
+    async def get_ticket_info_by_token(self, token: str) -> asyncpg.Record | None:
+        """
+        Возвращает полную информацию о билете и его владельце по токену.
+        Использует LEFT JOIN на случай, если пользователь был удален, но билет остался.
+        """
+        async with self.pool.acquire() as conn:
+            query = """
+                SELECT
+                    t.id,
+                    t.token,
+                    t.status,
+                    t.owner_telegram_id,
+                    u.username,
+                    u.name
+                FROM tickets t
+                LEFT JOIN users u ON t.owner_telegram_id = u.telegram_id
+                WHERE t.token = $1;
+            """
+            return await conn.fetchrow(query, token)
+
     # --- Методы для работы с промокодами ---
 
     async def create_promo_code(self, code: str, admin_telegram_id: int, value: float = 750,
@@ -439,23 +459,3 @@ class Database:
                 else:
                     result.append(str(r["telegram_id"]))
             return result
-
-    async def get_users_without_tickets(self) -> list[int]:
-        """
-        Возвращает список telegram_id тех пользователей,
-        которые зарегистрированы в боте, но не имеют ни одного билета.
-        """
-        async with self.pool.acquire() as conn:
-            # Используем NOT EXISTS, так как это очень эффективный способ
-            # найти записи в одной таблице, для которых нет соответствий в другой.
-            query = """
-                SELECT u.telegram_id
-                FROM users u
-                WHERE NOT EXISTS (
-                    SELECT 1 FROM tickets t WHERE t.owner_telegram_id = u.telegram_id
-                );
-            """
-            records = await conn.fetch(query)
-
-            # Преобразуем список записей (records) в простой список чисел (IDs)
-            return [record['telegram_id'] for record in records]

@@ -1,5 +1,6 @@
 import logging
 import os
+from datetime import datetime
 from pathlib import Path
 import secrets
 import asyncio
@@ -10,9 +11,10 @@ from dotenv import load_dotenv
 from aiogram import Router, F, types
 from aiogram.types import CallbackQuery, Message
 from aiogram.filters import Command
+from aiogram.filters import CommandStart, CommandObject
 
 from database.database import Database
-from bot.keyboards import buy_more, buy_ticket_kb
+from bot.keyboards import buy_more, buy_ticket_kb, kb_mark_ticket_used
 from bot.utils.messages import get_messages
 from bot.tickets.generator import TICKET_TEMPLATE_PATH, TICKETS_DIR, generate_ticket_image
 
@@ -384,3 +386,89 @@ async def stats_tickets_users_command(message: Message, db: Database):
 #         f"- Успешно отправлено: {success_count}\n"
 #         f"- Не удалось отправить (заблокировали бота и т.д.): {fail_count}"
 #     )
+
+@router.message(CommandStart(deep_link=True), F.from_user.id.in_(ADMINS))
+async def handle_ticket_scan(message: Message, command: CommandObject, db: Database):
+    """
+    Обрабатывает сканирование QR-кода билета администратором.
+    Отправляет информацию о владельце и кнопку для отметки.
+    """
+    msgs = get_messages()
+    token = command.args
+    if not token:
+        await message.answer(msgs["ticket_scan_token_error"])
+        return
+
+    try:
+        ticket_info = await db.get_ticket_info_by_token(token)
+
+        if not ticket_info:
+            await message.answer(msgs["ticket_scan_not_found"].format(token=token))
+            return
+
+        # Формируем информацию о владельце для вывода
+        owner_name = ticket_info['name'] or "Имя не указано"
+        owner_username = f"@{ticket_info['username']}" if ticket_info['username'] else "Никнейм скрыт"
+
+        # Проверяем статус билета и отправляем соответствующее сообщение
+        if ticket_info['status'] == 'active':
+            # Билет активен, отправляем инфо и кнопку
+            await message.answer(
+                text=msgs["ticket_scan_info"].format(
+                    owner_name=owner_name,
+                    owner_username=owner_username,
+                    token=token
+                ),
+                reply_markup=await kb_mark_ticket_used(token)
+            )
+        else:
+            # Билет уже использован, просто информируем
+            await message.answer(
+                text=msgs["ticket_scan_already_used_info"].format(
+                    owner_name=owner_name,
+                    owner_username=owner_username,
+                    token=token
+                )
+            )
+
+    except Exception as e:
+        logging.exception("Ошибка при обработке сканирования билета.")
+        await message.answer(msgs["ticket_scan_unexpected_error"].format(error=e))
+
+
+@router.callback_query(F.data.startswith("mark_ticket:"), F.from_user.id.in_(ADMINS))
+async def handle_mark_ticket_callback(callback: CallbackQuery, db: Database):
+    """
+    Обрабатывает нажатие кнопки "отметить", гасит билет и редактирует сообщение.
+    """
+    msgs = get_messages()
+    token = callback.data.split(":")[1]
+
+    # Пытаемся погасить билет
+    success = await db.use_ticket(token)
+
+    if success:
+        # Билет успешно погашен
+        admin_username = callback.from_user.username or "admin"
+        timestamp = datetime.now().strftime('%H:%M:%S')
+
+        # Формируем подпись
+        signature = msgs["ticket_scan_marked_signature"].format(
+            admin_username=admin_username,
+            timestamp=timestamp
+        )
+
+        # Редактируем исходное сообщение: добавляем подпись и убираем кнопку
+        await callback.message.edit_text(
+            text=callback.message.text + signature,
+            reply_markup=None
+        )
+        await callback.answer()  # Отвечаем на callback, чтобы убрать часики
+    else:
+        # Билет уже был погашен (возможно, другим админом)
+        await callback.answer(text=msgs["ticket_scan_already_marked_callback"], show_alert=True)
+        # Можно дополнительно убрать клавиатуру, если она еще есть
+        try:
+            await callback.message.edit_reply_markup(reply_markup=None)
+        except Exception:
+            pass  # Если сообщение уже было изменено, будет ошибка, игнорируем ее

@@ -1,5 +1,7 @@
 from aiogram import types
 
+from bot.utils.messages import get_messages
+
 
 async def buy_ticket_kb() -> types.InlineKeyboardMarkup:
     # выбор покупки: один или больше
@@ -22,3 +24,18 @@ async def admin_buttons(transaction_id: int) -> types.InlineKeyboardMarkup:
         )
     ]])
     return k
+
+
+async def kb_mark_ticket_used(token: str) -> types.InlineKeyboardMarkup:
+    """
+    Создает клавиатуру с одной кнопкой "отметить" для погашения билета.
+    В callback_data зашивается токен билета.
+    """
+    msgs = get_messages()
+    k = [[
+        types.InlineKeyboardButton(
+            text=msgs['ticket_scan_button_mark'],
+            callback_data=f"mark_ticket:{token}"
+        )
+    ]]
+    return types.InlineKeyboardMarkup(inline_keyboard=k)
