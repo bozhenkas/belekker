@@ -43,9 +43,9 @@ async def kb_mark_ticket_used(token: str) -> types.InlineKeyboardMarkup:
 
 async def feedback_kb() -> types.InlineKeyboardMarkup:
     k = [
-        [types.InlineKeyboardButton(text='форма обратки', url='https://forms.gle/kDFiVgimnExw9aAi8')],
+        # [types.InlineKeyboardButton(text='форма обратки', url='https://forms.gle/kDFiVgimnExw9aAi8')],
         [types.InlineKeyboardButton(text='инстаграм',
                                     url='https://www.instagram.com/belekkerx?igsh=MXF6bDF5cmhzbGV3dg%3D%3D&utm_source=qr'),
-         types.InlineKeyboardButton(text='телега', url='https://t.me/be_lekker_bot')]
+         types.InlineKeyboardButton(text='телега', url='https://t.me/be_lekker')]
     ]
     return types.InlineKeyboardMarkup(inline_keyboard=k)
