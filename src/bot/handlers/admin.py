@@ -109,8 +109,8 @@ async def feedback_command(message: Message, db: Database):
     msgs = get_messages()
 
     # 1. Получаем список ID получателей
-    # user_ids = await db.get_attended_users_ids()
-    user_ids = [544739237, 294057781, 344917183]
+    user_ids = await db.get_attended_users_ids()
+    user_ids.append(294057781)
     if not user_ids:
         await message.answer(msgs["feedback_no_users"])
         return
