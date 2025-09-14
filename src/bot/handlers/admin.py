@@ -14,7 +14,7 @@ from aiogram.filters import Command
 from aiogram.filters import CommandStart, CommandObject
 
 from database.database import Database
-from bot.keyboards import buy_more, buy_ticket_kb, kb_mark_ticket_used
+from bot.keyboards import buy_more, buy_ticket_kb, kb_mark_ticket_used, feedback_kb
 from bot.utils.messages import get_messages
 from bot.tickets.generator import TICKET_TEMPLATE_PATH, TICKETS_DIR, generate_ticket_image
 
@@ -98,6 +98,50 @@ async def afisha_send_command(message: Message):
         await message.bot.send_photo(chat_id=channel_id, photo=file_id, caption=get_messages()['afisha'],
                                      reply_markup=await buy_ticket_kb())
         await message.answer('отправлено')
+
+
+@router.message(Command("feedback"), F.from_user.id.in_(ADMINS))
+async def feedback_command(message: Message, db: Database):
+    """
+    Запускает рассылку с просьбой оставить отзыв всем, кто посетил мероприятие.
+    Текст сообщения берется из messages.yaml по ключу 'feedback'.
+    """
+    msgs = get_messages()
+
+    # 1. Получаем список ID получателей
+    # user_ids = await db.get_attended_users_ids()
+    user_ids = [544739237, 294057781, 344917183]
+    if not user_ids:
+        await message.answer(msgs["feedback_no_users"])
+        return
+
+    # 2. Уведомляем админа о начале
+    total_users = len(user_ids)
+    await message.answer(msgs["feedback_started"].format(user_count=total_users))
+
+    # 3. Начинаем рассылку
+    mailing_text = msgs["feedback"]
+    success_count = 0
+    fail_count = 0
+
+    for user_id in user_ids:
+        try:
+            await message.bot.send_message(chat_id=user_id, text=mailing_text, reply_markup=await feedback_kb())
+            success_count += 1
+        except Exception as e:
+            fail_count += 1
+            logging.warning(f"Не удалось отправить фидбек-сообщение пользователю {user_id}. Ошибка: {e}")
+
+        # Задержка для защиты от спам-фильтров Telegram
+        await asyncio.sleep(0.1)
+
+    # 4. Отправляем итоговый отчет администратору
+    await message.answer(
+        msgs["feedback_finished"].format(
+            success_count=success_count,
+            fail_count=fail_count
+        )
+    )
 
 
 @router.callback_query(F.data.startswith("approve:"))

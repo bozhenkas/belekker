@@ -304,6 +304,16 @@ class Database:
             stats = await conn.fetchrow(query)
             return stats
 
+    async def get_attended_users_ids(self) -> list[int]:
+        """
+        Возвращает список уникальных telegram_id тех пользователей,
+        у которых есть хотя бы один билет со статусом 'used'.
+        """
+        async with self.pool.acquire() as conn:
+            query = "SELECT DISTINCT owner_telegram_id FROM tickets WHERE status = 'used';"
+            records = await conn.fetch(query)
+            return [record['owner_telegram_id'] for record in records]
+
     # --- Методы для работы с промокодами ---
 
     async def create_promo_code(self, code: str, admin_telegram_id: int, value: float = 750,
